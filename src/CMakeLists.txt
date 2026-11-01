@@ -9,6 +9,13 @@ set(CMAKE_ARGS
     "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
 )
 
+# The pinned PortAudio and libsndfile revisions still declare CMake < 3.5.
+# CMake 4 removed that compatibility mode. ExternalProject starts separate
+# CMake processes, so pass the policy floor to every dependency explicitly.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    list(APPEND CMAKE_ARGS "-DCMAKE_POLICY_VERSION_MINIMUM=3.5")
+endif()
+
 include(check_git_submodule.cmake)
 
 check_git_submodule(dechamps_CMakeUtils)
