@@ -98,13 +98,13 @@ jobs:
         - uses: actions/download-artifact@v4
           with:
             name: FlexASIO-installer
-        - uses: sigstore/gh-action-sigstore-python@v2.1.0
+        - uses: sigstore/gh-action-sigstore-python@v3.5.0
           with:
             inputs: "*"
         - uses: actions/upload-artifact@v4
           with:
             name: sigstore
-            path: "*.sigstore"
+            path: "*.sigstore.json"
             if-no-files-found: error
   release:
     runs-on: ubuntu-latest
