@@ -58,7 +58,10 @@ jobs:
         timeout-minutes: 5
       # Starting from windows-2022, the Windows Audio engine doesn't seem to
       # be started by default anymore.
-      - run: net start audiosrv
+      - run: |
+          if ((Get-Service -Name audiosrv -ErrorAction Stop).Status -ne 'Running') {
+            Start-Service -Name audiosrv -ErrorAction Stop
+          }
       # Obviously this doesn't do any kind of thorough testing. We just want to
       # make sure that the executables are not obviously broken.
       - run: src/out/install/${{ matrix.msvc_config }}/bin/PortAudioDevices.exe
