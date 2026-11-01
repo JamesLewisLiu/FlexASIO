@@ -319,8 +319,9 @@ namespace flexasio {
 		return "ASIO " + ::dechamps_ASIOUtil::GetASIOSampleTypeString(sampleType.asio) + ", PortAudio " + GetSampleFormatString(sampleType.pa) + ", size " + std::to_string(sampleType.size);
 	}
 
-	FlexASIO::FlexASIO(void* sysHandle) :
+	FlexASIO::FlexASIO(void* sysHandle, std::optional<std::filesystem::path> configDirectory) :
 		windowHandle(reinterpret_cast<decltype(windowHandle)>(sysHandle)),
+		configLoader(std::move(configDirectory)),
 	portAudioDebugRedirector([](std::string_view str) { if (IsLoggingEnabled()) Log() << "[PortAudio] " << str; }),
 	hostApi([&] {
 		LogPortAudioApiList();
@@ -338,7 +339,9 @@ namespace flexasio {
 	}()),
 		outputDevice([&] {
 		Log() << "Selecting output device";
-		auto device = SelectDevice(hostApi.index, hostApi.info.defaultOutputDevice, config.output.device, 0, 1);
+		auto device = SelectDevice(hostApi.index, hostApi.info.defaultOutputDevice, config.output.device, 0, config.outputMixer.enabled ? 2 : 1);
+		if (config.outputMixer.enabled && !device.has_value())
+			throw ASIOException(ASE_HWMalfunction, "Output mixer requires a usable stereo output device");
 		if (device.has_value()) Log() << "Selected output device: " << *device;
 		else Log() << "No output device, proceeding without output";
 		return device;
@@ -384,6 +387,7 @@ namespace flexasio {
 		if (!outputDevice.has_value()) return 0;
 		try {
 			Log() << "Selecting output channel mask";
+			if (config.outputMixer.enabled) return SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
 			const auto channelMask = SelectChannelMask(hostApi.info.type, *outputDevice, config.output);
 			Log() << "Selected output channel mask: " << GetWaveFormatChannelMaskString(channelMask);
 			return channelMask;
@@ -404,7 +408,7 @@ namespace flexasio {
 			Log() << "WARNING: input channel count is higher than the max channel count for this device. Input device initialization might fail.";
 
 		Log() << "Output channel count: " << GetOutputChannelCount();
-		if (outputDevice.has_value() && GetOutputChannelCount() > outputDevice->info.maxOutputChannels)
+		if (outputDevice.has_value() && GetHardwareOutputChannelCount() > outputDevice->info.maxOutputChannels)
 			Log() << "WARNING: output channel count is higher than the max channel count for this device. Output device initialization might fail.";
 	}
 
@@ -415,6 +419,12 @@ namespace flexasio {
 	}
 	int FlexASIO::GetOutputChannelCount() const {
 		if (!outputDevice.has_value()) return 0;
+		if (config.outputMixer.enabled) return 8;
+		return GetHardwareOutputChannelCount();
+	}
+	int FlexASIO::GetHardwareOutputChannelCount() const {
+		if (!outputDevice.has_value()) return 0;
+		if (config.outputMixer.enabled) return 2;
 		if (config.output.channels.has_value()) return *config.output.channels;
 		return outputDevice->info.maxOutputChannels;
 	}
@@ -532,7 +542,8 @@ namespace flexasio {
 		info->channelGroup = 0;
 		info->type = info->isInput ? inputSampleType->asio : outputSampleType->asio;
 		std::stringstream channel_string;
-		channel_string << (info->isInput ? "IN" : "OUT") << " " << getChannelName(info->channel, info->isInput ? inputChannelMask : outputChannelMask);
+		const DWORD logicalOutputMask = config.outputMixer.enabled ? 0x63f : outputChannelMask;
+		channel_string << (info->isInput ? "IN" : "OUT") << " " << getChannelName(info->channel, info->isInput ? inputChannelMask : logicalOutputMask);
 		strcpy_s(info->name, 32, channel_string.str().c_str());
 		Log() << "Returning: " << info->name << ", " << (info->isActive ? "active" : "inactive") << ", group " << info->channelGroup << ", type " << ::dechamps_ASIOUtil::GetASIOSampleTypeString(info->type);
 	}
@@ -594,7 +605,7 @@ namespace flexasio {
 		if (outputEnabled)
 		{
 			output_parameters.device = outputDevice->index;
-			output_parameters.channelCount = GetOutputChannelCount();
+			output_parameters.channelCount = GetHardwareOutputChannelCount();
 			output_parameters.sampleFormat |= outputSampleType->pa;
 			if (config.output.suggestedLatencySeconds.has_value()) output_parameters.suggestedLatency = *config.output.suggestedLatencySeconds;
 			if (hostApi.info.type == paWASAPI)
@@ -786,6 +797,24 @@ namespace flexasio {
 			bufferInfos.push_back(asioBufferInfo);
 		}
 		return bufferInfos;
+		}()),
+		mixer([&]() -> std::optional<StereoMixer> {
+			if (!flexASIO.config.outputMixer.enabled) return std::nullopt;
+			const auto type = flexASIO.outputSampleType->pa;
+			const auto format = type == paInt16 ? StereoMixer::Format::Int16 :
+				type == paInt24 ? StereoMixer::Format::Int24 :
+				type == paInt32 ? StereoMixer::Format::Int32 : StereoMixer::Format::Float32;
+			return StereoMixer(flexASIO.config.outputMixer, format);
+		}()),
+		mixerSources([&] {
+			std::array<StereoMixer::Sources, 2> sources{};
+			if (mixer.has_value())
+				for (const auto& info : bufferInfos) {
+					if (info.isInput) continue;
+					for (size_t half = 0; half < sources.size(); ++half)
+						sources[half][static_cast<size_t>(info.channelNum)] = static_cast<const std::byte*>(info.buffers[half]);
+				}
+			return sources;
 		}()), streamWithExclusivity(flexASIO.WithStreamParameters(
 			buffers.inputChannelCount > 0, buffers.outputChannelCount > 0, sampleRate, GetDefaultSuggestedLatency(bufferSizeInFrames, sampleRate),
 			[&](const StreamParameters& streamParameters, StreamExclusivity streamExclusivity) {
@@ -1011,7 +1040,7 @@ namespace flexasio {
 		std::byte* const* output_samples = static_cast<std::byte* const*>(output);
 
 		if (output_samples) {
-			for (int output_channel_index = 0; output_channel_index < preparedState.flexASIO.GetOutputChannelCount(); ++output_channel_index)
+			for (int output_channel_index = 0; output_channel_index < preparedState.flexASIO.GetHardwareOutputChannelCount(); ++output_channel_index)
 				memset(output_samples[output_channel_index], 0, frameCount * outputSampleSizeInBytes);
 		}
 
@@ -1056,7 +1085,12 @@ namespace flexasio {
 		}
 
 		if (IsLoggingEnabled()) Log() << "Transferring output buffers from buffer index #" << driverBufferIndex << " to PortAudio";
-		CopyToPortAudioBuffers(preparedState.bufferInfos, driverBufferIndex, output_samples, frameCount * outputSampleSizeInBytes);
+		if (output_samples) {
+			if (preparedState.mixer.has_value())
+				preparedState.mixer->Process(preparedState.mixerSources[static_cast<size_t>(driverBufferIndex)], output_samples[0], output_samples[1], frameCount);
+			else
+				CopyToPortAudioBuffers(preparedState.bufferInfos, driverBufferIndex, output_samples, frameCount * outputSampleSizeInBytes);
+		}
 
 		if (outputReadyState.has_value()) driverBufferIndex = (driverBufferIndex + 1) % 2;
 

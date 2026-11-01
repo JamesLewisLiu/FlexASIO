@@ -1,0 +1,36 @@
+# Low-latency, equal-weight stereo downmix for GITADORA/spice64.
+# Copy to %USERPROFILE%\FlexASIO.toml after backing up the current configuration.
+# Select FlexASIO in the existing ASIO driver redirect setting and restart the game.
+# Exclusive mode occupies the selected output; other applications may not play
+# through that endpoint while the ASIO stream is running.
+backend = "Windows WASAPI"
+bufferSizeSamples = 128
+
+[input]
+device = ""
+
+[output]
+# Replace this with your physical endpoint's exact Windows WASAPI device name.
+device = "Realtek Digital Output (Realtek(R) Audio)"
+channels = 2
+sampleType = "Int32"
+suggestedLatencySeconds = 0.0
+wasapiExclusiveMode = true
+# Keep Int32 at the ASIO interface while allowing PortAudio to negotiate a
+# supported hardware format (for example, 24 valid bits in a 32-bit container).
+wasapiExplicitSampleFormat = false
+
+[output.mixer]
+enabled = true
+# Assumed ASIO source order: FL FR FC LFE BL BR SL SR. Verify in the game.
+left  = [1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0]
+right = [0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+# Each output sums five sources. Normalization gives each a coefficient of 0.2.
+normalize = true
+gain = 1.0
+
+# On the tested Realtek digital output at 48 kHz, this profile reported 144 frames
+# (3 ms) with OutputReady, or 272 frames (5.67 ms) without OutputReady. These are
+# driver-reported output latencies, not physical end-to-end measurements.
+# If playback crackles or the game rejects 128 frames, try 256 frames. Restore
+# the shared-mode example if exclusive mode cannot initialize on your device.

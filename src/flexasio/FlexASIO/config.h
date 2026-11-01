@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mixer.h"
+
 #include <windows.h>
 
 #include <array>
@@ -63,19 +65,21 @@ namespace flexasio {
 		};
 		Stream input;
 		Stream output;
+		MixerConfig outputMixer;
 
 		bool operator==(const Config& other) const {
 			return
 				backend == other.backend &&
 				bufferSizeSamples == other.bufferSizeSamples &&
 				input == other.input &&
-				output == other.output;
+				output == other.output &&
+				outputMixer == other.outputMixer;
 		}
 	};
 
 	class ConfigLoader {
 	public:
-		ConfigLoader();
+		explicit ConfigLoader(std::optional<std::filesystem::path> directory = std::nullopt);
 
 		const Config& Initial() const { return initialConfig; }
 

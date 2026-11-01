@@ -29,6 +29,7 @@ jobs:
           arch: ${{ matrix.msvc_arch }}
       - run: cmake -S src -B src/out/build/${{ matrix.msvc_config }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_INSTALL_PREFIX:PATH=${{ github.workspace }}/src/out/install/${{ matrix.msvc_config }}
       - run: cmake --build src/out/build/${{ matrix.msvc_config }}
+      - run: ctest --test-dir src/out/build/${{ matrix.msvc_config }}/FlexASIO-prefix/src/FlexASIO-build --output-on-failure
       - run: cmake --install src/out/build/${{ matrix.msvc_config }}
       - uses: actions/upload-artifact@v4
         with:

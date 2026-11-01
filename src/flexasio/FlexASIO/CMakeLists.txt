@@ -32,12 +32,16 @@ target_link_libraries(FlexASIO_cflexasio
 add_library(FlexASIO_comdll STATIC EXCLUDE_FROM_ALL comdll.cpp)
 target_compile_definitions(FlexASIO_comdll PRIVATE _WINDLL)
 
+add_library(FlexASIO_mixer STATIC mixer.cpp mixer_config.cpp)
+target_link_libraries(FlexASIO_mixer PRIVATE tinytoml)
+
 add_library(FlexASIO_config STATIC EXCLUDE_FROM_ALL config.cpp)
 target_link_libraries(FlexASIO_config
 	PRIVATE FlexASIO_log
 	PRIVATE FlexASIOUtil_shell
 	PRIVATE dechamps_cpputil::exception
 	PRIVATE tinytoml
+	PUBLIC FlexASIO_mixer
 )
 
 add_library(FlexASIO_control_panel STATIC EXCLUDE_FROM_ALL control_panel.cpp)

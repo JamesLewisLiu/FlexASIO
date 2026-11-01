@@ -42,3 +42,8 @@ add_subdirectory(FlexASIOUtil EXCLUDE_FROM_ALL)
 add_subdirectory(FlexASIO)
 add_subdirectory(FlexASIOTest)
 add_subdirectory(PortAudioDevices)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

@@ -74,6 +74,65 @@ suggestedLatencySeconds = 0.0
 wasapiExclusiveMode = true
 ```
 
+## Software output mixer (7.1 to stereo)
+
+FlexASIO can expose eight ASIO output channels while opening only two hardware
+output channels. Enable `[output.mixer]` to mix every source into stereo rather
+than dropping the additional channels. This works with all four supported sample
+types and does not add another audio buffer. It does not recreate surround
+positioning on two speakers.
+
+See [the GITADORA configuration](examples/GITADORA-7.1-to-stereo.toml) for a
+48 kHz / 512-frame / Int32 starting point. Set the Windows playback device to
+48 kHz and select FlexASIO in the existing GITADORA/spice64 ASIO driver redirect
+setting. If your launcher offers additional stereo-channel extraction (such as
+`asiodownmix` in some variants), disable it so all eight original outputs reach
+the mixer. No launcher-specific mixing feature is required.
+Select your physical speakers rather than a Voicemeeter virtual endpoint. The
+ASIO buffer setting alone is not a measurement of end-to-end latency.
+
+```toml
+[output]
+channels = 2
+
+[output.mixer]
+enabled = true
+left  = [1.0, 0.0, 0.7071, 0.5, 0.7071, 0.0, 0.7071, 0.0]
+right = [0.0, 1.0, 0.7071, 0.5, 0.0, 0.7071, 0.0, 0.7071]
+normalize = true
+gain = 1.0
+```
+
+- `enabled`: boolean, default `false`. When true, ASIO reports eight outputs;
+  `output.channels` describes the hardware and must be 2 or omitted. An enabled,
+  usable stereo output device is required. Input behavior is unchanged.
+- `left`, `right`: arrays of exactly eight finite numbers (integers or floats),
+  indexed by the ASIO channel number, not the order requested in `createBuffers`.
+  Supply both rows or neither. The defaults shown above assume source order
+  FL, FR, FC, LFE, BL, BR, SL, SR. Actual game channel assignments require
+  verification; customize the rows if they differ. Inactive channels are silent.
+- `normalize`: boolean, default `true`. Both rows are divided by the same
+  `max(1, sum(abs(left)), sum(abs(right)))`, preserving stereo balance while
+  providing headroom for simultaneous sources. This can make playback quieter.
+- `gain`: finite non-negative number, default `1.0`, applied after normalization.
+  Zero mutes all output. Increasing it can cause clipping; output is saturated
+  rather than wrapping. Non-finite floating-point source samples become silence.
+
+Unknown mixer keys, invalid types, missing rows, invalid weights and incompatible
+hardware channel counts cause configuration errors. All mixer fields participate
+in configuration change detection. Changes use the normal ASIO reset request,
+so the host must reload the driver or the application must be restarted.
+LFE is included at the configured weight without additional filtering or bass
+boost; audible bass depends on the physical speakers.
+
+An [equal-weight 128-frame exclusive-mode example](examples/GITADORA-128-exclusive.toml)
+is also provided. It keeps Int32 at the ASIO interface and allows PortAudio to
+negotiate the hardware format. Select the correct physical output and verify
+stability under the actual game workload. Exclusive mode occupies that output;
+increase the buffer to 256 frames if necessary, or return to shared mode if
+exclusive initialization fails. The example includes measured driver-reported
+latencies for one tested device, not guarantees for other hardware.
+
 ## Options reference
 
 ### Global section

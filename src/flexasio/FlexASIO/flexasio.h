@@ -31,7 +31,7 @@ namespace flexasio {
 
 	class FlexASIO final {
 	public:
-		FlexASIO(void* sysHandle);
+		FlexASIO(void* sysHandle, std::optional<std::filesystem::path> configDirectory = std::nullopt);
 
 		void GetBufferSize(long* minSize, long* maxSize, long* preferredSize, long* granularity);
 		void GetChannels(long* numInputChannels, long* numOutputChannels);
@@ -173,6 +173,8 @@ namespace flexasio {
 			// Thus we need our own buffer on top of PortAudio's buffers. This doens't add any latency because buffers are copied immediately.
 			Buffers buffers;
 			const std::vector<ASIOBufferInfo> bufferInfos;
+			const std::optional<StereoMixer> mixer;
+			const std::array<StereoMixer::Sources, 2> mixerSources;
 
 			struct StreamWithExclusivity final {
 				Stream stream;
@@ -197,6 +199,7 @@ namespace flexasio {
 
 		int GetInputChannelCount() const;
 		int GetOutputChannelCount() const;
+		int GetHardwareOutputChannelCount() const;
 
 		struct BufferSizes {
 			long minimum;

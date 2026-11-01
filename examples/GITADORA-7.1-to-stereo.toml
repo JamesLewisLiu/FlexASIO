@@ -1,0 +1,25 @@
+# Copy to %USERPROFILE%\FlexASIO.toml after backing up an existing configuration.
+# Select FlexASIO in the existing GITADORA/spice64 ASIO driver redirect setting.
+# If the launcher offers extra stereo-channel extraction, disable that feature.
+# Set the selected Windows playback device to 48000 Hz.
+backend = "Windows WASAPI"
+bufferSizeSamples = 512
+
+[input]
+device = ""
+
+[output]
+# Omit device to use the default WASAPI output, or specify its exact name from
+# PortAudioDevices. Select your physical speakers, not a Voicemeeter endpoint.
+channels = 2
+sampleType = "Int32"
+wasapiExclusiveMode = false
+
+[output.mixer]
+enabled = true
+# Source order assumed: FL FR FC LFE BL BR SL SR (ASIO indices 0..7).
+# Adjust these rows if the game's outputs use a different order.
+left  = [1.0, 0.0, 0.7071, 0.5, 0.7071, 0.0, 0.7071, 0.0]
+right = [0.0, 1.0, 0.7071, 0.5, 0.0, 0.7071, 0.0, 0.7071]
+normalize = true
+gain = 1.0

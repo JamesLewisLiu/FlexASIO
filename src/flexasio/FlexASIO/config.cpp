@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS  // Avoid issues with toml.h
 
 #include "config.h"
+#include "mixer_config.h"
 
 #include <dechamps_cpputil/exception.h>
 #include <toml/toml.h>
@@ -115,7 +116,16 @@ namespace flexasio {
 			SetOption(table, "backend", config.backend);
 			SetOption(table, "bufferSizeSamples", config.bufferSizeSamples, ValidateBufferSize);
 			ProcessTypedOption<toml::Table>(table, "input", [&](const toml::Table& table) { SetStream(table, config.input); });
-			ProcessTypedOption<toml::Table>(table, "output", [&](const toml::Table& table) { SetStream(table, config.output); });
+			ProcessTypedOption<toml::Table>(table, "output", [&](const toml::Table& table) {
+				SetStream(table, config.output);
+				ProcessTypedOption<toml::Table>(table, "mixer", [&](const toml::Table& mixer) { config.outputMixer = ParseMixerConfig(mixer); });
+			});
+			if (config.outputMixer.enabled) {
+				if (config.output.channels.has_value() && *config.output.channels != 2)
+					throw std::runtime_error("output mixer requires output.channels = 2 (or omitted)");
+				if (std::holds_alternative<Config::NoDevice>(config.output.device))
+					throw std::runtime_error("output mixer requires an enabled output device");
+			}
 		}
 
 
@@ -369,8 +379,8 @@ namespace flexasio {
 		return size > 0 ? Outcome(std::span(fileNotifyInformationBuffer).first(size)) : Outcome(Overflow());
 	}
 
-	ConfigLoader::ConfigLoader() :
-		configDirectory(GetUserDirectory()),
+	ConfigLoader::ConfigLoader(std::optional<std::filesystem::path> directory) :
+		configDirectory(directory.has_value() ? *directory : std::filesystem::path(GetUserDirectory())),
 		initialConfig(LoadConfig(configDirectory / configFileName)) {}
 
 	void ConfigLoader::Watcher::OnConfigFileEvent() {
